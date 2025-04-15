@@ -4,18 +4,390 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Snake Game</title>
-    <link rel="stylesheet" href="style.css">
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: Arial, sans-serif;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            height: 100vh;
+            margin: 0;
+            background-color: #222;
+            color: white;
+        }
+
+        #startPage {
+            text-align: center;
+        }
+
+        #startPage button {
+            padding: 20px 40px;
+            margin: 20px;
+            cursor: pointer;
+            font-size: 20px;
+            background-color: #007bff;
+            color: white;
+            border: none;
+            border-radius: 10px;
+        }
+
+        #startPage button:hover {
+            background-color: #0056b3;
+        }
+
+        #gameArea {
+            position: relative;
+            display: none;
+            width: 100%;
+            max-width: 800px; /* Increased width */
+            height: 100%;
+            text-align: center;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+        }
+
+        #gameCanvas {
+            border: 2px solid white;
+            background-color: #000;
+            width: 100%;
+            max-width: 800px; /* Ensure it stays within the game area */
+            height: calc(100% - 150px); /* Adjust height to leave more space for controls */
+            margin-bottom: 10px; /* Add margin below the canvas */
+        }
+
+        #controls {
+            margin-top: 10px;
+            text-align: center;
+            display: none;
+        }
+
+        #controls button {
+            padding: 15px 30px;
+            margin: 5px;
+            cursor: pointer;
+            font-size: 16px;
+            background-color: #007bff;
+            color: white;
+            border: none;
+            border-radius: 10px;
+            display: inline-block;
+            width: auto;
+            margin-right: 10px;
+        }
+
+        #controls button:hover {
+            background-color: #0056b3;
+        }
+
+        #score {
+            margin-top: 10px;
+            color: white;
+            font-size: 18px;
+        }
+
+        #mobileControls {
+            display: none;
+            position: relative;
+            top: 10px; /* Position below the canvas */
+            text-align: center;
+            z-index: 1; /* Ensure controls are above the canvas */
+        }
+
+        .mobileControl {
+            width: 50px; /* Reduced size */
+            height: 50px; /* Reduced size */
+            border-radius: 50%;
+            background-color: #007bff;
+            color: white;
+            border: none;
+            font-size: 24px; /* Reduced font size */
+            margin: 5px;
+            cursor: pointer;
+        }
+
+        .mobileControl:hover {
+            background-color: #0056b3;
+        }
+
+        #mobileControls .vertical {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+        }
+
+        #mobileControls .horizontal {
+            display: flex;
+            justify-content: center;
+        }
+
+        .snakeSegment {
+            fill: #32cd32;
+        }
+
+        .snakeHead {
+            fill: #228b22;
+        }
+
+        .snakeEye {
+            fill: white;
+        }
+
+        .food {
+            fill: #ff4500;
+        }
+
+        .glowing-food {
+            fill: #ff4500;
+            filter: drop-shadow(0 0 5px #ff4500);
+        }
+    </style>
 </head>
 <body>
+    <div id="startPage">
+        <h1>Select Controls</h1>
+        <button onclick="loadGame('desktop')">Desktop Controls</button>
+        <button onclick="loadGame('mobile')">Mobile Controls</button>
+    </div>
     <div id="gameArea">
         <canvas id="gameCanvas"></canvas>
         <div id="controls">
+            <button id="restartBtn">Restart</button>
             <button id="pauseBtn">Pause</button>
             <button id="stopBtn">Stop</button>
-            <button id="restartBtn">Restart</button>
             <div id="score">Score: 0</div>
         </div>
+        <div id="mobileControls">
+            <div class="vertical">
+                <button class="mobileControl" onclick="changeDirection('UP')">↑</button>
+            </div>
+            <div class="horizontal">
+                <button class="mobileControl" onclick="changeDirection('LEFT')">←</button>
+                <button class="mobileControl" onclick="changeDirection('DOWN')">↓</button>
+                <button class="mobileControl" onclick="changeDirection('RIGHT')">→</button>
+            </div>
+        </div>
     </div>
-    <script src="script.js"></script>
+    <script>
+        const canvas = document.getElementById("gameCanvas");
+        const ctx = canvas.getContext("2d");
+
+        const gridSize = 25; // Increased grid size for larger snake and food
+        const canvasWidth = 800; // Increased width
+        const canvasHeight = 600; // Increased height
+
+        canvas.width = canvasWidth;
+        canvas.height = canvasHeight;
+
+        // Load Sound Effects
+        const bgMusic = new Audio("background.mp3"); // Background music
+        const eatSound = new Audio("eat.mp3"); // Eating sound
+        const moveSound = new Audio("move.mp3"); // Movement sound
+        const gameOverSound = new Audio("gameover.mp3"); // Game over sound
+
+        bgMusic.loop = true; // Loop background music
+        bgMusic.volume = 0.3; // Adjust volume
+
+        let snake = [{ x: 400, y: 300 }]; // Adjusted starting position
+        let food = {};
+        let direction = "RIGHT";
+        let score = 0;
+        let gameInterval;
+        let gamePaused = false;
+        let firstMove = true; // To play background music only once
+
+        function randomFoodPosition() {
+            const x = Math.floor(Math.random() * (canvasWidth / gridSize)) * gridSize;
+            const y = Math.floor(Math.random() * (canvasHeight / gridSize)) * gridSize;
+            return { x, y };
+        }
+
+        function drawSnake() {
+            snake.forEach((segment, index) => {
+                const gradient = ctx.createRadialGradient(
+                    segment.x + gridSize / 2,
+                    segment.y + gridSize / 2,
+                    0,
+                    segment.x + gridSize / 2,
+                    segment.y + gridSize / 2,
+                    gridSize / 2
+                );
+                if (index === 0) {
+                    gradient.addColorStop(0, "#228b22");
+                    gradient.addColorStop(1, "#32cd32");
+                } else {
+                    gradient.addColorStop(0, "#32cd32");
+                    gradient.addColorStop(1, "#228b22");
+                }
+
+                ctx.fillStyle = gradient;
+                ctx.beginPath();
+                ctx.arc(segment.x + gridSize / 2, segment.y + gridSize / 2, gridSize / 2, 0, Math.PI * 2);
+                ctx.fill();
+
+                // Add eyes to the snake head
+                if (index === 0) {
+                    ctx.fillStyle = "white";
+                    const eyeOffsetX = direction === "LEFT" ? -5 : direction === "RIGHT" ? 5 : 0;
+                    const eyeOffsetY = direction === "UP" ? -5 : direction === "DOWN" ? 5 : 0;
+                    ctx.beginPath();
+                    ctx.arc(segment.x + gridSize / 2 - 5 + eyeOffsetX, segment.y + gridSize / 2 - 5 + eyeOffsetY, 4, 0, Math.PI * 2);
+                    ctx.fill();
+                    ctx.beginPath();
+                    ctx.arc(segment.x + gridSize / 2 + 5 + eyeOffsetX, segment.y + gridSize / 2 - 5 + eyeOffsetY, 4, 0, Math.PI * 2);
+                    ctx.fill();
+                }
+            });
+        }
+
+        function drawFood() {
+            ctx.fillStyle = "#ff4500";
+            ctx.beginPath();
+            ctx.arc(food.x + gridSize / 2, food.y + gridSize / 2, gridSize / 2 - 7, 0, Math.PI * 2); // Slightly smaller food
+            ctx.fill();
+
+            // Glowing effect
+            ctx.filter = "drop-shadow(0 0 5px #ff4500)";
+            ctx.beginPath();
+            ctx.arc(food.x + gridSize / 2, food.y + gridSize / 2, gridSize / 2 - 7, 0, Math.PI * 2); // Slightly smaller food
+            ctx.fill();
+            ctx.filter = "none";
+        }
+
+        function updateScore() {
+            document.getElementById("score").textContent =` Score: ${score}`;
+        }
+
+        function moveSnake() {
+            const head = { ...snake[0] };
+
+            if (direction === "UP") head.y -= gridSize;
+            if (direction === "DOWN") head.y += gridSize;
+            if (direction === "LEFT") head.x -= gridSize;
+            if (direction === "RIGHT") head.x += gridSize;
+
+            snake.unshift(head);
+
+            if (head.x === food.x && head.y === food.y) {
+                food = randomFoodPosition();
+                score++;
+                updateScore();
+                eatSound.play(); // Play eating sound
+            } else {
+                snake.pop();
+            }
+
+            moveSound.play(); // Play movement sound on every move
+        }
+
+        function checkCollision() {
+            const head = snake[0];
+
+            if (
+                head.x < 0 ||
+                head.x >= canvasWidth ||
+                head.y < 0 ||
+                head.y >= canvasHeight ||
+                snake.slice(1).some(segment => segment.x === head.x && segment.y === head.y)
+            ) {
+                gameOverSound.play(); // Play game over sound
+                stopGame();
+            }
+        }
+
+        function draw() {
+            ctx.clearRect(0, 0, canvasWidth, canvasHeight);
+            drawSnake();
+            drawFood();
+        }
+
+        function gameLoop() {
+            if (gamePaused) return;
+            moveSnake();
+            checkCollision();
+            draw();
+        }
+
+        function startGame() {
+            food = randomFoodPosition();
+            snake = [{ x: 400, y: 300 }]; // Adjusted starting position
+            score = 0;
+            updateScore();
+            if (gameInterval) clearInterval(gameInterval);
+            gameInterval = setInterval(gameLoop, 200);
+
+            if (firstMove) {
+                bgMusic.play();
+                firstMove = false;
+            }
+        }
+
+        function stopGame() {
+            clearInterval(gameInterval);
+            alert(`Game Over! Final Score: ${score}`);
+            document.getElementById("score").style.display = "none";
+            bgMusic.pause(); // Stop background music when the game ends
+            bgMusic.currentTime = 0; // Reset music position
+        }
+
+        function pauseResumeGame() {
+            gamePaused = !gamePaused;
+            document.getElementById("pauseBtn").textContent = gamePaused ? "Resume" : "Pause";
+            
+            if (gamePaused) {
+                bgMusic.pause(); // Pause background music
+            } else {
+                bgMusic.play(); // Resume background music
+            }
+        }
+
+        function restartGame() {
+            startGame();
+            document.getElementById("score").style.display = "block";
+            bgMusic.play(); // Resume background music on restart
+        }
+
+        function changeDirection(newDirection) {
+            if (newDirection === "UP" && direction !== "DOWN") direction = "UP";
+            if (newDirection === "DOWN" && direction !== "UP") direction = "DOWN";
+            if (newDirection === "LEFT" && direction !== "RIGHT") direction = "LEFT";
+            if (newDirection === "RIGHT" && direction !== "LEFT") direction = "RIGHT";
+        }
+
+        function loadGame(controlType) {
+            document.getElementById("startPage").style.display = "none";
+            document.getElementById("gameArea").style.display = "flex";
+            document.getElementById("controls").style.display = "block";
+            if (controlType === "mobile") {
+                document.getElementById("mobileControls").style.display = "block";
+            } else {
+                document.getElementById("mobileControls").style.display = "none";
+            }
+            startGame(); // Start the game immediately after selecting controls
+        }
+
+        document.getElementById("pauseBtn").addEventListener("click", pauseResumeGame);
+        document.getElementById("stopBtn").addEventListener("click", stopGame);
+        document.getElementById("restartBtn").addEventListener("click", restartGame);
+
+        document.addEventListener("keydown", event => {
+            if (event.key === "ArrowUp" && direction !== "DOWN") direction = "UP";
+            if (event.key === "ArrowDown" && direction !== "UP") direction = "DOWN";
+            if (event.key === "ArrowLeft" && direction !== "RIGHT") direction = "LEFT";
+            if (event.key === "ArrowRight" && direction !== "LEFT") direction = "RIGHT";
+        });
+
+        // Ensure startPage is displayed initially
+        document.addEventListener("DOMContentLoaded", () => {
+            document.getElementById("startPage").style.display = "block";
+            document.getElementById("gameArea").style.display = "none";
+        });
+    </script>
 </body>
 </html>
